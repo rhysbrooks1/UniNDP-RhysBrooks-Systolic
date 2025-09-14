@@ -2,8 +2,12 @@ from tools import *
 from sim.channel import * 
 from math import inf
 
+
+
 class HW_system:
         
+    
+    
     def __init__(self, bankstate, resource_state):
         
         self.host = None

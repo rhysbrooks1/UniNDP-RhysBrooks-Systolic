@@ -9,93 +9,113 @@ import numpy as np
 def tqdm_replacement(iterable_object,*args,**kwargs):
     return iterable_object
 
-def sim(commands, silent=False, filename=None, sim_verify = False):
-    
-    # set up sim config
-    # SimConfig.read_from_yaml('./config/all_feature.yaml')
-    
-    # NOTE: if you want to disable tqdm in the framework, you can use the following code
+def _required_channels_from_commands(commands):
+    """
+    Scan the generated command stream and find the maximum channel id used.
+    Simulator will provision SimConfig.ch = max_ch + 1 when not sim_verify.
+    """
+    max_ch = 0
+    try:
+        for grp in commands:
+            # group tuple typically: (group_id, <meta>, [inst, inst, ...])
+            if not isinstance(grp, (list, tuple)) or len(grp) < 3:
+                continue
+            inst_list = grp[2]
+            for inst in inst_list:
+                if isinstance(inst, (list, tuple)) and len(inst) > 2:
+                    ch_val = inst[2]
+                    if isinstance(ch_val, int):
+                        if ch_val > max_ch:
+                            max_ch = ch_val
+    except Exception:
+        # best-effort only
+        pass
+    return max_ch + 1
 
-    # if silent:
-    #     tqdm_copy = tqdm.tqdm # store it if you want to use it later
-    #     tqdm.tqdm = tqdm_replacement
-
-    # create HW
-    real_ch = SimConfig.ch
-    # NOTE: speedup the simulation, but turn off when comparing to Samsung's Simulator
-    if not sim_verify:
-        SimConfig.ch = 1
-
-    np_bankstate = np.zeros((SimConfig.ch, SimConfig.ra, SimConfig.de, SimConfig.bg*SimConfig.ba, 4), dtype=np.int64)
-    de_state_num = 1 + 1 + max(SimConfig.de_pu) # bus, buffer, pu
-    ra_state_num = SimConfig.de + 1 + SimConfig.ra_pu # bus, buffer, pu
-    ch_state_num = 0 # bus, buffer, pu
-    sys_state_num = SimConfig.ch
-    resource_state = np.zeros(sys_state_num + SimConfig.ch * (ch_state_num + SimConfig.ra * (ra_state_num + (SimConfig.de * de_state_num))), dtype=np.int64)
-    HW = HW_system(np_bankstate, resource_state)
-
-    # create inst queue
-    queue = inst_queue()
-
-    total_cmd = 0
-
+def sim(commands, silent=False, filename=None, sim_verify=False):
+    """
+    Run the UniNDP simulator over a list of instruction groups.
+    IMPORTANT: We no longer force SimConfig.ch=1 unconditionally. Instead, we
+    size the channel count to cover whatever the command stream uses.
+    """
+    # If commands are serialized, load them first so we can size channels properly.
     if filename is not None:
-        commands = []
         with open(filename, 'rb') as f:
             commands = pkl.load(f)
 
+    # Determine how many channels are actually referenced by the command stream.
+    # Keep the old "fast path" (ch=1) only if all commands target channel 0.
+    real_ch = SimConfig.ch
+    if not sim_verify:
+        needed_ch = _required_channels_from_commands(commands)
+        # If everything is on ch=0, we still enjoy the fast path.
+        SimConfig.ch = max(1, needed_ch)
+
+    # Build simulator state
+    np_bankstate = np.zeros(
+        (SimConfig.ch, SimConfig.ra, SimConfig.de, SimConfig.bg * SimConfig.ba, 4),
+        dtype=np.int64
+    )
+    de_state_num = 1 + 1 + max(SimConfig.de_pu)  # bus, buffer, pu
+    ra_state_num = SimConfig.de + 1 + SimConfig.ra_pu  # bus, buffer, pu
+    ch_state_num = 0  # bus, buffer, pu
+    sys_state_num = SimConfig.ch
+    resource_state = np.zeros(
+        sys_state_num + SimConfig.ch * (ch_state_num + SimConfig.ra * (ra_state_num + (SimConfig.de * de_state_num))),
+        dtype=np.int64
+    )
+    HW = HW_system(np_bankstate, resource_state)
+
+    # Create inst queue
+    queue = inst_queue()
+
+    total_cmd = 0
     for cmd in commands:
         queue.add_group(cmd[0], cmd[1], cmd[2])
         total_cmd += len(cmd[2])
-    
+
     global_tick = 0
     issue_cmd = None
     issue_group = None
-    # use tqdm to show progress
-    if silent:
-        iter_bar = range(total_cmd+1)
-    else:
-        iter_bar = tqdm.tqdm(range(total_cmd+1))
+
+    # if silent:
+    #     tqdm_copy = tqdm.tqdm
+    #     tqdm.tqdm = tqdm_replacement
+
+    iter_bar = range(total_cmd + 1) if silent else tqdm.tqdm(range(total_cmd + 1))
+
     for _ in iter_bar:
-    # for _ in range(total_cmd+1):
-    # while not queue.check_empty():
-        if issue_cmd is not None: # skip the first cycle
-        # 1. update states
+        # 1) advance time for previously chosen command
+        if issue_cmd is not None:
             if add_tick > 0:
                 global_tick += add_tick
-                # HW.update(add_tick)
-                np_bankstate += -int(add_tick)
-                np_bankstate.clip(0)
-                resource_state += -int(add_tick)
-                resource_state.clip(0)
-        # 2. issue command
-            # queue
+                # Fast state updates (vector subtraction + clamp)
+                np_bankstate -= int(add_tick)
+                np_bankstate.clip(0, out=np_bankstate)
+                resource_state -= int(add_tick)
+                resource_state.clip(0, out=resource_state)
+
+            # 2) commit previously chosen command
             queue.issue_inst(issue_group)
             queue.clear_empty_group(issue_group)
-            # hardware
-            # if not silent: 
-            #     tqdm.tqdm.write(f"tick: {global_tick}, group: {issue_group}, cmd: {issue_cmd}")
             HW.issue_inst(issue_cmd, issue_group)
-            # log
             issue_cmd = None
             issue_group = None
+
+        # 3) choose next command to issue
         add_tick = inf
-        # 3. find next command to issue
         issuable_cmd = queue.get_inst()
-        # choose 1st cmd to issue, TODO: try different strategies
-        
         for tmp in issuable_cmd:
             group_id, inst_tmp = tmp
             tmp_issue_lat = HW.check_inst(inst_tmp, group_id)
-            # report
-            # print(f"group: {group_id}, inst: {inst_tmp}, issue_lat: {tmp_issue_lat}")
             if tmp_issue_lat < add_tick:
                 add_tick = tmp_issue_lat
                 issue_cmd = inst_tmp
                 issue_group = group_id
-    
-    # TODO: how to get final latency?
+
+    # Final drain
     global_tick += np.max(resource_state)
 
+    # restore original channel count
     SimConfig.ch = real_ch
     return global_tick

@@ -124,6 +124,19 @@ def main():
     elif args.architecture == 'upmem':
         SimConfig.read_from_yaml('./config/upmem.yaml')
         Codegen = upmem
+
+    elif args.architecture == 'systolic-upmem':
+        # Reuse UPMEM timing/config; only change dataflow via backend
+        SimConfig.read_from_yaml('./config/upmem.yaml')
+        Codegen = systolic_upmem
+    elif args.architecture == 'systolic-aim':
+      # Reuse AiM timing/config; choose PU count as aim does
+        SimConfig.read_from_yaml('./config/gddr6-aim.yaml')
+        if args.workload == 'mm':
+          SimConfig.de_pu = [16]
+        else:
+          SimConfig.de_pu = [4]
+        Codegen = systolic_aim
     elif args.architecture == 'dimmining':
         SimConfig.read_from_yaml('./config/dimmining.yaml')
         Codegen = dimmining

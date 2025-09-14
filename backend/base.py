@@ -1,4 +1,5 @@
 import abc
+import os
 from tools import *
 import numpy as np
 
@@ -11,7 +12,11 @@ class BaseCodegen(HW_info):
         self.last_buffer_col = 0
         self.last_buffer_row = 0
         self.buffered = []
-        self.total_inst = 0
+        self.total_inst = 0 
+        
+
+
+
         self.inst_info = [
             'pu', 'pu_col', 'pu_row_change',
             'device_reg2buf', 'device_buf2reg',

@@ -195,6 +195,12 @@ class dimmining(BaseCodegen):
                 cmd_left -= len(tmp_inst_list)
 
             break
+
+        with open("test/output_dir/inst_list.txt", "w") as f:
+            for group_id, _, inst_list in tmp_inst_groups:
+                f.write(f"# Instruction Group {group_id}\n")
+                for inst in inst_list:
+                        f.write(f"{inst}\n")
         
         return tmp_inst_groups, performance_threshold - cmd_left
     

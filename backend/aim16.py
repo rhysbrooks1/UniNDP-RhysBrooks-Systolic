@@ -161,6 +161,12 @@ class aim16(BaseCodegen):
                     pass
 
             break # FIXME: 考虑到仿真的问题，暂时只生成一个channel的指令
+
+        with open("test/output_dir/inst_list.txt", "w") as f:
+            for group_id, _, inst_list in tmp_inst_groups:
+                f.write(f"# Instruction Group {group_id}\n")
+                for inst in inst_list:
+                 f.write(f"{inst}\n")
         
         return tmp_inst_groups, performance_threshold - cmd_left
     
@@ -211,6 +217,7 @@ class aim16(BaseCodegen):
                     pass
 
             break # FIXME: 考虑到仿真的问题，暂时只生成一个channel的指令
+
         
         return tmp_inst_groups, performance_threshold - cmd_left
     
@@ -274,4 +281,8 @@ class aim16(BaseCodegen):
                 cmd_left -= len(tmp_inst_list)
                 group_id += 1
             break # FIXME: 考虑到仿真的问题，暂时只生成一个channel的指令
+
+
+        
+        
         return tmp_inst_groups, performance_threshold - cmd_left

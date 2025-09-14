@@ -5,3 +5,4 @@ from backend.hbm_pim import hbmpim
 from backend.upmem import upmem
 from backend.dimmining import dimmining
 from backend.hbm_pim_verify import hbmpim_verify
+from backend.systolic import systolic_upmem, systolic_aim
