@@ -11,7 +11,6 @@
 
 If you want the upstream artifact guide, see the original repo. This document covers what you need for **this repo**.
 
----
 
 ## 0) Setup
 
