@@ -1,288 +1,311 @@
-# 0. Setup
+---
 
-<!-- ## Download the repo -->
+# UniNDP (Fork) — Quick Start & Artifact Guide
+
+> This repository is a **fork** of the HPCA’25 UniNDP artifact.
+> It preserves the original CLI and experiment flow, and adds:
+>
+> * A robust **systolic OS functional verifier** (math-only and linked-to-sim).
+> * Extra debug logging for DRAM row discipline and instruction scheduling.
+> * Minor fixes for enum-agnostic stream scanning and Python 3–first UX.
+
+If you want the upstream artifact guide, see the original repo. This document covers what you need for **this repo**.
+
+---
+
+## 0) Setup
 
 ```bash
-# download the repo
-git clone git@github.com:UniNDP-hpca25-ae/UniNDP.git
-# enter the repo
-cd UniNDP
+# clone repo
+git clone https://github.com/rhysbrooks1/UniNDP-RhysBrooks-Systolic
+cd UniNDP-RhysBrooks-Systolic
+
+# (recommended) create a venv
+python3 -m venv .venv
+source .venv/bin/activate
+
 # install requirements
 pip install -r requirements.txt
 ```
 
-<!-- ## Requirements
+> OS assumptions: Linux (Ubuntu/Debian tested).
+> Key deps: Python 3.10+ (3.12 OK), PyYAML, numpy, tqdm, csv.
+> If you hit a “No module named tqdm” error later, run: `pip install tqdm`.
 
-- OS: Linux Ubuntu.
-- Python, PyYAML, numpy, tqdm, csv. -->
+---
 
+## 1) Documentation (Fork Notes)
 
-<!-- ## Download the results
+You can use the compiler and simulator like upstream. This fork adds **systolic verification utilities** you can run directly (see §3.3).
 
-> Some of the compilation process is time-comsuming, if you want to skip part of the workload compilation process, you can download the results from the following link.
+### 1.1 Compiler Usage (same CLI as upstream)
 
-```bash
-
-``` -->
-
-# 1. Documention
-
-> You can skip this section if you are not interested in the detailed usage of the compiler.
-
-## 1.1 Compiler Usage
-
-### Compile a single operator
+Compile a **single operator**:
 
 ```bash
-python compile.py -A {architecture_name} -W {workload_type} -S {input_size, reduce_size, output_size, batch_size} -O {output_dir}
+python3 compile.py \
+  -A {architecture_name} \
+  -W {workload_type} \
+  -S {input_size} {reduce_size} {output_size} {batch_size} \
+  -O {output_dir}
 ```
 
-You can use `-h` option to see the detailed usage of the compiler.
+Common flags:
+
+* `-Q` quiet compile logs
+* `-K N` choose top-N design points to simulate
+* `-WS <workspace>` set workspace root
+
+CLI help:
 
 ```bash
-python compile.py -h
+python3 compile.py -h
 ```
 
-### Compile using bash script
+### 1.2 Batch Compile via Script (unchanged)
 
-#### Step 0: prepare the workload csv
+#### Step 0: prepare workloads
 
-Go to the `workload` dir, we have provided some workload files for you to compile. You can also create your own workload file following the format description in the `workload/README.md`.
+See `workload/README.md` for CSV format.
 
-#### Step 1: run the script
-
-Choose the workload file and architecture configuration you want to compile, and run the following bash command.
+#### Step 1: run the batch script
 
 ```bash
-cd UniNDP
+# from repo root
 ./process_workload.sh {workload_file_name} {architecture_name} {workspace_name}
+# example:
+./process_workload.sh mm.csv aim myspace
 ```
-This bash command will compile the workloads on the specified architecture configuration, which will issue a bunch of `nohup xxx &` commands on the background. The output log will all be stored to `nohup.out` file.
 
-#### Step 2: How to monitor and terminate the compile commands issued by the script ?
+This issues background `nohup ... &` commands and writes output logs to `nohup.out`.
 
-To monitor the issued compile commands, you can use commands like
+#### Step 2: monitor / terminate batch
+
 ```bash
 watch 'ps -aux | grep compile'
-```
-
-To kill certain background process, you can use commands like
-```bash
+# kill all running compiles
 kill -9 $(ps -aux | grep compile | grep -v grep | awk '{print $2}')
 ```
 
-#### Step 3: Export the results
+#### Step 3: export results
 
-After all the workloads are compiled, the result csv and log file will be stored in `./{workspace_name}/{workload_name}_{architecture_name}/csv` and `./{workspace_name}/{workload_name}_{architecture_name}/log` respectively. 
+* Per-arch results go under:
+  `./{workspace_name}/{workload_name}_{architecture_name}/csv` and `/log`
 
-You can use `combine_op.sh` under `./workload` to automatically create results csv files under `./{workspace_name}`, see [2.1]() for more details.
-
-Besides, you can also use `combine_e2e.sh` to directly export the end-to-end results into a single csv file, see [2.2]() for more details.
-
-## 1.2 simulator usage
-
-please refer to `UniNDP/testsim.py` for the usage of the simulator.
-
-## 1.3 Adding a new architecture
-
-- Directly modify the configuration file under `UniNDP/config` if you want to explore different architecture settings on existing computation dataflow. 
-- To explore a new dataflow, you should copy `UniNDP/backend/_template.py` to add a new backend, which requires further efforts.
-
-
-# 2. Artifact Evaluation
-
-## 2.1 MM & MVM Experiment (Sec.VII-B, Table V & VI)
-
-### Step 1: run the bash script (~ 2.5 hours)
-```bash
-# [under the UniNDP dir]
-bash ./process_workload.sh mm.csv {arch} {topK} op # command format
-bash ./process_workload.sh mm.csv aim 30 op # example: compile the mm on AiM architecture, select top 30 results to simulate
-```
-
-- `{arch}`: Arch 1-5 corresponds to `upmem`, `aim`, `aim8`, `hbm-pim`, `dimmining`.
-- `{topK}`: optional, how many compilation results are selected to be simulated, default = 30.
-- [How to monitor and terminate the commands issued by the script?](#step-2-how-to-monitor-and-terminate-the-compile-commands-issued-by-the-script)
-- Output csv, result log files, and program progress will be stored in `op` folder.
-
-### Step 2: export the results for each architecture
-
-After all the workloads are compiled, run the following command to export the results into csv.
+Create per-op CSV summaries:
 
 ```bash
-# [under the UniNDP dir]
-cp script/combine_op.sh op/ # copy the combine script to the e2e dir
+cp script/combine_op.sh op/
 cd op
 bash combine_op.sh
+# => op/mm_{arch}.csv (etc.)
 ```
 
-For each architecture `{arch}`, the results will be stored in `./op/mm_{arch}.csv`.
+---
 
-## 2.2 End-to-End Experiment (Sec.VII-B, Fig. 7 & 8)
+## 2) Artifact Evaluation 
 
+The commands below mirror the paper’s AE, and work on this fork without change. (Only difference: you must use `python3`.)
 
-### Step 1: run the bash script
+### 2.1 MM & MVM (Sec. VII-B, Table V & VI)
+
+**Step 1: compile (~2.5h)**
+
 ```bash
-# [under the UniNDP dir]
-bash ./process_workload.sh {workload_filename} {arch} {topK} e2e # command format
-bash ./process_workload.sh resnet_18_224.csv aim 30 e2e # example: compile the resnet on AiM architecture, select top 30 results to simulate
+# under repo root
+bash ./process_workload.sh mm.csv {arch} {topK} op
+# example (AiM, top 30):
+bash ./process_workload.sh mm.csv aim 30 op
 ```
 
-- `{workload_filename}`: The workload file you want to compile, choose from `resnet_18_224.csv`, `vgg11_224.csv`, `llama2_7B_decode_tk32.csv`, `llama2_7B_prefill.csv`, `llama2_13B_decode_tk32.csv`, `llama2_13B_prefill.csv`.
-- `{arch}`: Arch 1,2,5 corresponds to `upmem`, `aim`, `dimmining`.
-- `{topK}`: optional, how many compilation results are selected to be simulated, default = 30.
-- [How to monitor and terminate the commands issued by the script?](#step-2-how-to-monitor-and-terminate-the-compile-commands-issued-by-the-script)
-- Output csv and log files will be stored in `e2e` folder.
+* `{arch}`: upmem | aim | aim8 | hbm-pim | dimmining
+* `{topK}`: optional (default 30)
+* outputs stored under `op/`
 
-### Step 2: export the end-to-end results (Fig.7)
-
-After all the workloads are compiled, run the following command to export the results into csv.
+**Step 2: export**
 
 ```bash
-# [under the UniNDP dir]
-cp script/combine_e2e.sh e2e/ # copy the combine script to the e2e dir
+cp script/combine_op.sh op/
+cd op
+bash combine_op.sh
+# => ./op/mm_{arch}.csv per-arch
+```
+
+### 2.2 End-to-End (Sec. VII-B, Fig. 7 & 8)
+
+**Step 1: compile**
+
+```bash
+bash ./process_workload.sh {workload_filename} {arch} {topK} e2e
+# example
+bash ./process_workload.sh resnet_18_224.csv aim 30 e2e
+```
+
+* workloads: `resnet_18_224.csv`, `vgg11_224.csv`, `llama2_7B_decode_tk32.csv`, `llama2_7B_prefill.csv`, `llama2_13B_decode_tk32.csv`, `llama2_13B_prefill.csv`
+* `{arch}`: upmem | aim | dimmining
+
+**Step 2: export (Fig.7)**
+
+```bash
+cp script/combine_e2e.sh e2e/
 cd e2e
 bash combine_e2e.sh
+# => e2e/combined_results.csv
 ```
 
-Then the results will be summarized in `e2e/combined_results.csv`.
+**Step 3: key metrics (Fig.8)**
 
-### Step 3: Look into the key metrics of compilation results (Fig.8)
+In CSV:
 
-The key metrics of the compilation results can also be found in the CSV files. Here are their corresponding names in the CSV files:
-- #instructions: `cmd`
-- #DRAM-Access-cmd: `pu_dram_access` + `host_dram_access`
-- #DRAM-Row-change: `row_change`
+* total instructions: `cmd`
+* DRAM Access cmds: `pu_dram_access + host_dram_access`
+* row changes: `row_change`
 
-## 2.3 Simulator Verification (Sec.VII-C)
+### 2.3 Simulator Verification (Sec. VII-C)
 
-In this section, we use MVM operator of {input_size} and {output_size} as example.
+> ⚠ Samsung PIMSimulator requires sizes multiple of 4096.
 
-**! Warn: as the Samsung simulator can only support workload size which is a multiple of 4096, please make sure the input_size and output_size are multiples of 4096.**
-
-### UniNDP Simulation
+**UniNDP Sim:**
 
 ```bash
-python sim_verify.py -S {input_size} {output_size}
+python3 sim_verify.py -S {input_size} {output_size}
+# logs under verify_result/log/[input_size,output_size].log
 ```
 
-Results and the latency of simulation will be reported in `verify_result/log/[input_size, output_size].log`.
+**Samsung PIMSimulator (external):**
+Follow their README to build (`scons`), then edit:
 
-### Samsung PIMSimulator Setup & Simulation
-
-> Samsung Simulator: https://github.com/SAITPublic/PIMSimulator/tree/dev
-
-Download this repo using `git clone`, and install the dependencies in 3.1.
-Then try the `scons` command in 3.2 to build the simulator. If no error occurs, stop at 3.2 and continue with the steps in the next paragraph.
-
-Then go to the `PIMSimulator/src/tests/PIMBenchTestCases.cpp` file, and change the gemv test case defined at `line 23` into:
+`PIMSimulator/src/tests/PIMBenchTestCases.cpp`:
 
 ```cpp
 TEST_F(PIMBenchFixture, gemv)
 {
-    setPIMBenchTestCase(KernelType::GEMV, {output_size}, {input_size}); // change the input_size and output_size here
+    setPIMBenchTestCase(KernelType::GEMV, {output_size}, {input_size});
     executePIMKernel();
 }
 ```
 
-Then run the following commands to compile and simulate:
+Run:
 
 ```bash
-# [under the PIMSimulator dir]
-# compile the test
-scons
-# run the test
 ./sim --gtest_filter=PIMBenchFixture.gemv > log.txt
 ```
 
-Results and the latency of simulation will be reported in the `log.txt` file.
-
-## 2.4 Predictor Verification
-
-### Accuracy Verification (Fig.10)
-
-In the paper, we verify the predictor for the following architectures, on the MVM of input size 4096 and output size 4096.
+### 2.4 Predictor Verification (Fig.10)
 
 ```bash
-# [under the UniNDP dir]
-python compile_predictor.py -A upmem -S 1 4096 4096 1 -O upmem_pred # Arch 1
-python compile_predictor.py -A aim -S 1 4096 4096 1 -O aim_16_pred # Arch 2
-python compile_predictor.py -A aim8 -S 1 4096 4096 1 -O aim_8_pred # Arch 3
-python compile_predictor.py -A dimmining -S 1 4096 4096 1 -O dimmining_pred # Arch 5
+python3 compile_predictor.py -A upmem    -S 1 4096 4096 1 -O upmem_pred
+python3 compile_predictor.py -A aim      -S 1 4096 4096 1 -O aim_16_pred
+python3 compile_predictor.py -A aim8     -S 1 4096 4096 1 -O aim_8_pred
+python3 compile_predictor.py -A dimmining -S 1 4096 4096 1 -O dimmining_pred
 ```
 
-This command will generate the result csv in `./test_pred/dimmining_pred/`. You can use predictor results and sim results to verify the accuracy of the predictor.
-
-### Speed Up
-
-If you only want to update the predictor result, use option `-RP` in the command.
+Speed-up toggle:
 
 ```bash
-# E.g., enabling -RP on Arch 5
-python compile_predictor.py -A dimmining -S 1 4096 4096 1 -O dimmining_pred -RP
+python3 compile_predictor.py -A dimmining -S 1 4096 4096 1 -O dimmining_pred -RP
 ```
 
-By enabling and disenabling the `-RP` option, you can compare the speed of the predictor and the simulator.
-
-### Only predictor, no simulation
-
-Also, we can also test the performance of the predictor without simulation, the speedup will decrease from 1.20x to 1.17x.
+Predictor-only:
 
 ```bash
-# test the performance with predictor and simulation
-python -OO compile_predictor.py -A aim -S 4096 4096 4096 1 -O with_sim -Q -K 30
-# test the performance with only predictor, no simulation
-python -OO compile_predictor.py -A aim -S 4096 4096 4096 1 -O no_sim -Q -K 30 -NS 
+python3 -OO compile_predictor.py -A aim -S 4096 4096 4096 1 -O with_sim -Q -K 30
+python3 -OO compile_predictor.py -A aim -S 4096 4096 4096 1 -O no_sim  -Q -K 30 -NS
 ```
 
-## 2.5 Pruning Verification
-
-### Pruning Ablation (Fig.9)
-
-This figure is produced by compiling a MVM operator with the size of 1000 on Arch 2, and gradually restrict on the performance upper bound (0.5× and 0.77× of
-the highest performance upper bound in the search space).
-```Bash
-# [Under UniNDP dir]
-python compile_detail.py -A aim -S 1 1000 1000 1 -O pruning_test -UU
-```
-
-The results will be stored in `UniNDP/pruning_and_breakdown/pruning_test/csv/_gemm.csv`. As it's complicated to draw the figure, the processed excel file for this picture is provided [here](https://drive.google.com/uc?export=download&id=1Ym922wjMMKId5hiNPMbKAsII0sUfS5-9).
-
-### Compilation Speedup
+### 2.5 Pruning (Fig.9)
 
 ```bash
-# test the latency with pruning
-python -OO compile_detail.py -A aim -S 4096 4096 4096 1 -O with_prune -Q -K 30
-# test the latency w/o pruning
-python -OO compile_detail.py -A aim -S 4096 4096 4096 1 -O no_prune -Q -K 30 -UU
+python3 compile_detail.py -A aim -S 1 1000 1000 1 -O pruning_test -UU
+# results: pruning_and_breakdown/pruning_test/csv/_gemm.csv
 ```
 
-## 2.6 Breakdown Experiment (Fig.11)
-
-The breakdown figure is draw from the command numbers in the result csv file (as well as the timing parameters in the config file). The processed excel file for this picture is provided [here](https://drive.google.com/uc?export=download&id=1IezYKfBg_NsMSuXNHiFvOuKYDHUvhCti).
+Compare pruning on/off:
 
 ```bash
-# [under the UniNDP dir]
-python -OO compile_detail.py -A upmem -S 4096 6656 832 1 -O upmem_breakdown -Q -K 50 # Arch 1
-python -OO compile_detail.py -A aim -S 4096 6656 832 1 -O aim_breakdown -Q -K 50 # Arch 2
-python -OO compile_detail.py -A aim8 -S 4096 6656 832 1 -O aim8_breakdown -Q -K 50 # Arch 3
+python3 -OO compile_detail.py -A aim -S 4096 4096 4096 1 -O with_prune -Q -K 30
+python3 -OO compile_detail.py -A aim -S 4096 4096 4096 1 -O no_prune  -Q -K 30 -UU
 ```
 
-## 2.7 Insight 2 (Sec.VII-G-2)
+### 2.6 Breakdown (Fig.11)
 
-The result in **insight 2** is evaluated by comparing the `best result` (**!!! not the speedup**) of these two input buffer settings on HBM-PIM architecture.
 ```bash
-# use nohup xxx & to run the command in the background
-
-# 4096 MM workload
-# 32B input buffer
-python compile.py -A hbm-pim -W mm -S 4096 4096 4096 1 -Q -K 5 -IB 256 -O mm_inbuf_256 -WS buffer_insight
-# 512B input buffer 
-python compile.py -A hbm-pim -W mm -S 4096 4096 4096 1 -Q -K 5 -IB 512 -O mm_inbuf_512 -WS buffer_insight
-
-# 4096 MVM workload
-# 32B input buffer
-python compile.py -A hbm-pim -W mm -S 1 4096 4096 1 -Q -K 5 -IB 256 -O mvm_inbuf_256 -WS buffer_insight
-# 512B input buffer 
-python compile.py -A hbm-pim -W mm -S 1 4096 4096 1 -Q -K 5 -IB 512 -O mvm_inbuf_512 -WS buffer_insight
+python3 -OO compile_detail.py -A upmem   -S 4096 6656 832 1 -O upmem_breakdown   -Q -K 50
+python3 -OO compile_detail.py -A aim     -S 4096 6656 832 1 -O aim_breakdown     -Q -K 50
+python3 -OO compile_detail.py -A aim8    -S 4096 6656 832 1 -O aim8_breakdown    -Q -K 50
 ```
+
+### 2.7 Insight 2 (Sec. VII-G-2)
+
+HBM-PIM input buffer size sensitivity:
+
+```bash
+# MM (4096)
+python3 compile.py -A hbm-pim -W mm -S 4096 4096 4096 1 -Q -K 5 -IB 256 -O mm_inbuf_256  -WS buffer_insight
+python3 compile.py -A hbm-pim -W mm -S 4096 4096 4096 1 -Q -K 5 -IB 512 -O mm_inbuf_512  -WS buffer_insight
+
+# MVM (4096)
+python3 compile.py -A hbm-pim -W mm -S 1 4096 4096 1 -Q -K 5 -IB 256 -O mvm_inbuf_256 -WS buffer_insight
+python3 compile.py -A hbm-pim -W mm -S 1 4096 4096 1 -Q -K 5 -IB 512 -O mvm_inbuf_512 -WS buffer_insight
+```
+
+---
+
+## 3) Fork-Specific Utilities (what’s new)
+
+### 3.1 YAML & Debugging
+
+* Default UPMEM config: `config/upmem.yaml`
+* You can override via `--yaml config/<file>.yaml` or env:
+
+  * `UNINDP_DEBUG=1` (verbose)
+  * `UNINDP_TRACE_OUT=./runs/<name>/trace.jsonl` (JSONL trace)
+  * `UNINDP_USE_ALL_RANKS=1` (enable multi-rank per channel in backend)
+
+### 3.2 Systolic OS: **Math-only** Verifier (fast sanity)
+
+```bash
+export PYTHONPATH=.
+python3 backend/systolic.py
+# Expect “[SYSTOLIC-OS VERIFY] … -> PASS”
+```
+
+Custom sizes/tiles:
+
+```bash
+python3 - <<'PY'
+from backend.systolic import systolic_os_verify_numpy_equivalence as verify
+verify(M=8,K=8,L=8, m_block=4,k_block=4,l_block=4, dtype="int16", seed=123, verbose=True)
+PY
+```
+
+### 3.3 Systolic OS: **Linked-to-Sim** Verifier (checks stream order & DRAM rows)
+
+```bash
+export PYTHONPATH=.
+python3 backend/systolic.py --linked --yaml config/upmem.yaml
+# Expect “[LINKED VERIFY] … -> PASS”
+```
+
+This verifier:
+
+* Builds the real instruction stream (`mm_micro`) for your settings.
+* Scans for **BUF→BK** flushes and **host_read** ops (enum-agnostic).
+* Mirrors scheduler rows into a **shadow DRAM** at flush time.
+* Assembles the result at host_read and compares with NumPy reference.
+
+
+### 3.4 Dumping Instruction Streams
+
+Use `compile.py` with `UNINDP_DEBUG=1` to print “group/inst” summaries during compile/sim, or add a targeted print in `backend/base.py` where `create_*` ops are produced.
+
+---
+
+## 4) Tips / Common Issues
+
+* **Missing `tqdm`**: `pip install tqdm`
+* **YAML path**: if you see defaults only, pass `--yaml config/upmem.yaml`
+* **“openrow != target_row”**: your write path violates DRAM row policy. This fork opens the row via a tiny `bk2buf(1)` before `buf2bk` flushes in the OS kernel. If you changed bank mapping, ensure **device-local** bank IDs are used for device ops.
+* **Bank mapping**: This fork maps PUs to **device-local** banks (per-device index space) for all `bk<->buf` ops; host reads still work with the per-device bank enumeration returned by the backend.
+
+---
