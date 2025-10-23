@@ -1,0 +1,1 @@
+{"evt": "CONFIG", "run_id": "NA", "kernel_id": "mm", "dataflow": "output_stationary", "pu_grid": [1, 16], "ts_cyc": 0}

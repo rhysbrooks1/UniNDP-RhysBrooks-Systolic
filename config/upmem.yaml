@@ -40,7 +40,7 @@ ra_gb_wl: 1
 ra: 2
 
 # system level
-ch: 20 
+ch: 1 
 ch_w: 64
 host_w: 
 host_t: 
